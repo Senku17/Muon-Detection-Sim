@@ -1,0 +1,60 @@
+import numpy as np
+
+#Const
+D_det=1170.0
+D_gen= D_det+80.0
+
+H_det=360.0
+H_gen=720.0
+
+#GENRATION VOLUME
+R_gen=D_gen/2.0
+gen_z_max=H_gen/2.0
+gen_z_min=-H_gen/2.0
+
+#DETECTION VOLUME
+R_det=D_det/2.0
+det_z_max=H_det/2.0
+det_z_min=-H_det/2.0
+
+#array set up
+mu_position= np.empty((0,3))
+mu_direction=np.empty((0,3))
+
+#MUON GENERATION
+def mu_generation(N):
+    #positin
+    u1=np.random.uniform(0,1,N)
+    u2=np.random.uniform(0,1,N)
+    u3=np.random.uniform(0,1,N)
+    
+    rho= R_gen*u1
+    alpha=2*np.pi*u2
+    z= gen_z_min+(gen_z_max-gen_z_min)*u3
+    
+    #cylnd to cart position 
+    x=rho*np.cos(alpha)
+    y=rho*np.sin(alpha)
+    
+    mu_position=np.column_stack((x,y,z))
+    
+    #direction
+    u4=np.random.uniform(0,1,N)
+    u5=np.random.uniform(0,1,N)
+    
+    phi =2*np.pi*u4
+    theta=np.pi*u5
+    
+    #cylnd to cart direction (Spherical to Cartesian)
+    dx=np.sin(theta)*np.cos(phi)
+    dy=np.sin(theta)*np.sin(phi)
+    dz=np.cos(theta)
+    
+    mu_direction=np.column_stack((dx,dy,dz))
+    
+    return mu_position,mu_direction
+
+mu_position,mu_direction=mu_generation(3)
+
+print(mu_position)
+print(mu_direction)
