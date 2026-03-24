@@ -1,1 +1,85 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <random>
 
+
+//dimensions cylindre détecteur (volume utile)
+double D_det = 1170.0;
+double H_det = 360.0;
+
+//dimensions cylindre génération muon
+double D_gen = D_det + 80.0;
+double H_gen = 720.0;
+
+
+// origine (x,y,z) prise au centre du détecteur
+
+//volume génération
+double R_gen = D_gen / 2.0;
+double z_max = H_gen / 2.0;
+double z_min = -H_gen / 2.0;
+
+//coordonnées du muon
+Vec3 mu = {x, y, z};
+
+
+//tirage aléatoire
+std::random_device rd;
+std::mt19937 gen(rd());
+std::uniform_real_distribution<> dist(0.0, 1.0);
+
+//stockage des coordonnées dans un vecteur
+
+
+//fonction de génération
+void mu_generation(int N, std::vector<Vec3>& mu_position, std::vector<Vec3>& mu_direction) {
+    for (int i = 0; i < N; i++) {
+        double a = dist(gen);
+        double b = dist(gen);
+        double c = dist(gen);
+
+        //passage en coord. cylindriques
+        double rho = a*R_gen;
+        double theta1 = b*2*M_PI;
+        double z = z_min + c*(z_max - z_min);
+
+        double x = rho * cos(theta1);
+        double y = rho * sin(theta1);
+
+        mu_position.push_back({x, y, z});
+
+        //
+        double d = dist(gen);
+        double e = dist(gen);
+
+        double phi = d*2*M_PI;
+        double theta2 = e*M_PI;
+
+        double dirx = sin(theta2) * cos(phi);
+        double diry = sin(theta2) * sin(phi);
+        double dirz = cos(theta2);
+
+        mu_direction.push_back({dirx, diry, dirz});
+    }
+}
+
+int main() {
+    std::vector<Vec3> mu_position;
+    std::vector<Vec3> mu_direction;
+
+    mu_generation(100, mu_position, mu_direction);
+
+    // Affichage
+    std::cout << "Positions:\n";
+    for (const auto& p : mu_position) {
+        std::cout << p.x << " " << p.y << " " << p.z << "\n";
+    }
+
+    std::cout << "\nDirections:\n";
+    for (const auto& d : mu_direction) {
+        std::cout << d.x << " " << d.y << " " << d.z << "\n";
+    }
+
+    return 0;
+}
