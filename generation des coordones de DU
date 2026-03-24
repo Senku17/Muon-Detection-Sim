@@ -1,0 +1,29 @@
+import numpy as np # type: ignore
+
+# CONSTANTS n GENERATION FUNCTION
+
+D_SPACING = 90.0  
+N_DU = 115       
+
+def generate_du_positions():
+    v1 = np.array([D_SPACING, 0.0])
+    v2 = np.array([D_SPACING * np.cos(np.pi/3), D_SPACING * np.sin(np.pi/3)])
+
+    #empty list
+    positions = []
+    for i in range(-6, 7):
+        for j in range(-6, 7):
+            pos = i * v1 + j * v2
+            positions.append(pos)
+     # list to array       
+    positions = np.array(positions)
+    distances = np.linalg.norm(positions, axis=1)
+
+    # Filtering(127 DU to 115 DU)
+    closest_indices = np.argsort(distances)[:N_DU]
+    return positions[closest_indices]
+
+
+du_positions = generate_du_positions()
+ 
+
