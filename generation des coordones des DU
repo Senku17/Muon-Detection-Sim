@@ -27,7 +27,8 @@ def generate_du_positions():
 du_positions = generate_du_positions()
  
 
-#for i in range(N_DU):
+#vous pouvez tester pour afficher la liste des coord
+for i in range(N_DU):
     x = du_positions[i, 0]
     y = du_positions[i, 1]
 
