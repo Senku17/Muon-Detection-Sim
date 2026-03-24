@@ -25,5 +25,15 @@ def generate_du_positions():
 
 
 du_positions = generate_du_positions()
+
+
+# vous pouvez testez le code pour afficher la liste des
+ coordonees
+for i in range(N_DU):
+    x = du_positions[i, 0]
+    y = du_positions[i, 1]
+    # :8.2f formats the numbers nicely so the columns line up perfectly
+    print(f"DU {i+1}: X = {x} m,  Y = {y} m")
+
  
 
