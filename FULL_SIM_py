@@ -1,0 +1,93 @@
+import numpy as np # type: ignore
+
+#1.CONSTANTS
+
+D_det = 1170.0
+D_gen = D_det + 80.0
+
+H_det = 612.0
+H_gen = H_det+200
+
+R_gen = D_gen / 2.0
+gen_z_max = H_gen / 2.0
+gen_z_min = -H_gen / 2.0
+
+D_SPACING = 90.0  
+N_DU = 115    
+
+N_DOMS = 18
+Z_SPACING = 36.0
+
+#2.MUON GENERATION 
+def generate_muons(N):
+    
+    # POSITIONS 
+    rho = np.random.uniform(0, R_gen, N)  
+    alpha = np.random.uniform(0, 2 * np.pi, N)
+    z = np.random.uniform(gen_z_min, gen_z_max, N)
+
+    x = rho * np.cos(alpha)
+    y = rho * np.sin(alpha)
+
+    mu_position = np.column_stack((x, y, z))
+
+    #DIRECTIONS 
+    phi = np.random.uniform(0, 2 * np.pi, N)
+    theta = np.random.uniform(0, np.pi, N)  
+
+    dx_local = np.sin(theta) * np.cos(phi)
+    dy_local = np.sin(theta) * np.sin(phi)
+    dz_local = np.cos(theta)
+    
+    # muon frame to detector frame 
+    dx_global = -np.cos(alpha) * dx_local + np.sin(alpha) * dy_local
+    dy_global = -np.sin(alpha) * dx_local - np.cos(alpha) * dy_local
+    dz_global = dz_local
+
+    mu_direction = np.column_stack((dx_global, dy_global, dz_global))
+
+    return mu_position, mu_direction
+
+
+
+#DU coordinates function (X,Y)
+def generate_du_positions():
+    v1 = np.array([D_SPACING, 0.0])
+    v2 = np.array([D_SPACING * np.cos(np.pi/3), D_SPACING * np.sin(np.pi/3)])
+
+    #empty list
+    positions = []
+    for i in range(-6, 7):
+        for j in range(-6, 7):
+            pos = i * v1 + j * v2
+            positions.append(pos)
+     # list to array       
+    positions = np.array(positions)
+    distances = np.linalg.norm(positions, axis=1)
+
+    # Filtering(127 DU to 115 DU)
+    closest_indices = np.argsort(distances)[:N_DU]
+    return positions[closest_indices]
+
+
+du_positions = generate_du_positions()
+
+#Extantion 3D
+def build_3d_detector(du_positions):
+    dom_positions = []
+    z_start = -H_det / 2.0  # Starts exactly at -306.0
+    
+    for du in du_positions:
+        x = du[0]
+        y = du[1]
+        for i in range(N_DOMS):
+            z = z_start + (i * Z_SPACING)
+            dom_positions.append([x, y, z])
+            
+    return np.array(dom_positions)
+
+# Execute
+du_positions = generate_du_positions()
+detector_3d = build_3d_detector(du_positions)
+
+
