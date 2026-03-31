@@ -1,0 +1,58 @@
+
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+
+struct Vec2 {
+    double x, y;
+};
+
+// CONSTANTES
+double D_SPACING = 90.0;
+int N_DU = 115;
+
+// FONCTION DE GENERATION
+std::vector<Vec2> generate_du_positions() {
+    Vec2 v1 = {D_SPACING, 0.0};
+    Vec2 v2 = {
+        D_SPACING * std::cos(M_PI / 3.0),
+        D_SPACING * std::sin(M_PI / 3.0)
+    };
+
+    std::vector<Vec2> positions;
+
+    for (int i = -6; i <= 6; i++) {
+        for (int j = -6; j <= 6; j++) {
+            Vec2 pos = {
+                i * v1.x + j * v2.x,
+                i * v1.y + j * v2.y
+            };
+            positions.push_back(pos);
+        }
+    }
+
+    // Tri par distance au centre
+    std::sort(positions.begin(), positions.end(), [](const Vec2& a, const Vec2& b) {
+        double da = std::sqrt(a.x * a.x + a.y * a.y);
+        double db = std::sqrt(b.x * b.x + b.y * b.y);
+        return da < db;
+    });
+
+    // Garder les N_DU plus proches
+    positions.resize(N_DU);
+
+    return positions;
+}
+
+int main() {
+    std::vector<Vec2> du_positions = generate_du_positions();
+
+    for (int i = 0; i < N_DU; i++) {
+        std::cout << "DU " << i + 1 << ": X = "
+                  << du_positions[i].x << " m, Y = "
+                  << du_positions[i].y << " m\n";
+    }
+
+    return 0;
+}
