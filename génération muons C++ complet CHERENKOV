@@ -1,0 +1,250 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <numeric>
+#include <set>
+
+struct Vec3 {
+    double x, y, z;
+    Vec3 operator-(const Vec3& v) const { return {x - v.x, y - v.y, z - v.z}; }
+    Vec3 operator+(const Vec3& v) const { return {x + v.x, y + v.y, z + v.z}; }
+    Vec3 operator*(double s) const { return {x*s, y*s, z*s}; }
+    Vec3 operator/(double s) const { return {x/s, y/s, z/s}; }
+    double dot(const Vec3& v) const { return x*v.x + y*v.y + z*v.z; }
+    Vec3 cross(const Vec3& v) const { return {y*v.z - z*v.y, z*v.x - x*v.z, x*v.y - y*v.x}; }
+    double norm() const { return sqrt(x*x + y*y + z*z); }
+    Vec3 normalized() const { double n=norm(); return {x/n, y/n, z/n}; }
+};
+
+// ===================== CONSTANTES =====================
+const double D_det = 1170.0;
+const double H_det = 612.0;
+const int N_DU = 115;
+const int N_DOMS = 18;
+const double Z_SPACING = 36.0;
+
+const double MAX_PHOTON_RADIUS = 80.0; // augmenté pour compenser le cône
+const double PHOTON_STEP = 0.1;
+const int PHOTONS_PER_METER = 345;
+
+const double REF_INDEX = 1.33;
+const double THETA_C = acos(1.0 / REF_INDEX);
+const double COS_THETA_C = cos(THETA_C);
+const double C_WATER = 0.299792458; // m/ns
+const double C_LIGHT = 0.299792458;
+
+// ===================== CYLINDRES =====================
+const double R_cyl_det = D_det/2.0;          
+const double H_cyl_det = H_det;              
+const double R_cyl_mu_gen = R_cyl_det + 40;  
+const double H_cyl_mu_gen = H_det + 200;     
+
+// ===================== DETECTEUR =====================
+void build_detector(std::vector<Vec3>& dom_positions){
+    dom_positions.clear();
+    for(int du=0; du<N_DU; du++){
+        double x = (du%10)*90;
+        double y = (du/10)*90;
+        for(int dom=0; dom<N_DOMS; dom++){
+            double z = -H_det/2.0 + dom*Z_SPACING;
+            dom_positions.push_back({x,y,z});
+        }
+    }
+}
+
+// ===================== GENERATION DES MUONS =====================
+void generate_muon_on_cylinder(Vec3& pos, Vec3& dir){
+    double phi = ((double)rand()/RAND_MAX)*2*M_PI;
+    double z = -H_cyl_mu_gen/2.0 + ((double)rand()/RAND_MAX)*H_cyl_mu_gen;
+    pos = {R_cyl_mu_gen*cos(phi), R_cyl_mu_gen*sin(phi), z};
+
+    double theta_max = M_PI/3;
+    double theta = ((double)rand()/RAND_MAX)*theta_max;
+    double phi_dir = ((double)rand()/RAND_MAX)*2*M_PI;
+
+    Vec3 inward = { -pos.x, -pos.y, 0 };
+    inward = inward.normalized();
+
+    dir = {
+        inward.x*cos(theta) - inward.y*sin(theta)*cos(phi_dir),
+        inward.x*sin(theta)*sin(phi_dir) + inward.y*cos(theta),
+        sin(theta)*sin(phi_dir)
+    };
+
+    dir = dir.normalized();
+}
+
+// ===================== INTERSECTION =====================
+bool intersects_detector(const Vec3& pos, const Vec3& dir){
+    double t = -pos.dot(dir);
+    Vec3 point = pos + dir*t;
+    double radial = sqrt(point.x*point.x + point.y*point.y);
+
+    return (radial <= R_cyl_det + MAX_PHOTON_RADIUS) &&
+           (point.z >= -H_cyl_det/2.0 - MAX_PHOTON_RADIUS) &&
+           (point.z <= H_cyl_det/2.0 + MAX_PHOTON_RADIUS);
+}
+
+// ===================== PROPAGATION CHERENKOV =====================
+void propagate_photons_cherenkov(
+    const Vec3& mu_start, const Vec3& mu_dir,
+    const std::vector<Vec3>& dom_positions,
+    std::vector<Vec3>& hit_doms,
+    double& distance_parcourue,
+    int& total_photons)
+{
+    hit_doms.clear();
+    total_photons = 0;
+    distance_parcourue = 0.0;
+
+    std::set<size_t> doms_hit_idx;
+    bool first_hit = false;
+    double tolerance = 0.15; // tolérance angulaire
+
+    for(double t=PHOTON_STEP; t<2000; t+=PHOTON_STEP){
+        Vec3 mu_pos = mu_start + mu_dir*t;
+        if(std::sqrt(mu_pos.x*mu_pos.x + mu_pos.y*mu_pos.y) - R_cyl_det > MAX_PHOTON_RADIUS) continue;
+        if(mu_pos.z < -H_cyl_det/2.0 - MAX_PHOTON_RADIUS || mu_pos.z > H_cyl_det/2.0 + MAX_PHOTON_RADIUS) continue;
+
+        int photons_this_step = (int)(PHOTONS_PER_METER * PHOTON_STEP);
+        std::vector<size_t> doms_this_step;
+
+        for(size_t i=0; i<dom_positions.size(); i++){
+            Vec3 to_dom = dom_positions[i] - mu_pos;
+            double dist = to_dom.norm();
+            Vec3 dir_photon = to_dom.normalized();
+
+            double cos_angle = mu_dir.dot(dir_photon);
+            if(std::fabs(cos_angle - COS_THETA_C) < tolerance &&
+               dist <= MAX_PHOTON_RADIUS &&
+               doms_hit_idx.find(i)==doms_hit_idx.end())
+            {
+                doms_this_step.push_back(i);
+            }
+        }
+
+        if(!doms_this_step.empty()){
+            if(!first_hit){
+                distance_parcourue = t;
+                first_hit = true;
+            }
+
+            int photons_per_dom = photons_this_step / doms_this_step.size();
+            for(auto idx: doms_this_step){
+                hit_doms.push_back(dom_positions[idx]);
+                total_photons += photons_per_dom;
+                doms_hit_idx.insert(idx);
+            }
+        }
+
+        if(doms_hit_idx.size() == dom_positions.size()) break;
+    }
+}
+
+// ===================== CHECK PERIODICITE =====================
+bool check_axial_periodicity(const std::vector<Vec3>& doms, const Vec3& mu_dir,
+                             int& axial_reps){
+    if(doms.size()<3) return false;
+    std::vector<double> proj;
+    for(auto d: doms) proj.push_back(d.dot(mu_dir));
+    std::sort(proj.begin(), proj.end());
+
+    std::vector<double> diffs;
+    for(size_t i=1;i<proj.size();i++) diffs.push_back(proj[i]-proj[i-1]);
+    double mean_diff = std::accumulate(diffs.begin(), diffs.end(),0.0)/diffs.size();
+    double tol = 0.1;
+    for(auto delta: diffs) if(fabs(delta-mean_diff)/mean_diff>tol) return false;
+
+    axial_reps = (int)(proj.back()/mean_diff);
+    return true;
+}
+
+bool check_planar_periodicity(const std::vector<Vec3>& doms, const Vec3& mu_dir,
+                              int& plane_reps_x, int& plane_reps_y){
+    if(doms.size()<4) return false;
+    Vec3 w = mu_dir;
+    Vec3 a = (fabs(w.x)<0.9)? Vec3{1,0,0} : Vec3{0,1,0};
+    Vec3 u = a - w*(a.dot(w)); u = u*(1.0/u.norm());
+    Vec3 v = w.cross(u);
+
+    std::vector<double> xs, ys;
+    for(auto d: doms){
+        xs.push_back(d.dot(u));
+        ys.push_back(d.dot(v));
+    }
+    std::sort(xs.begin(), xs.end());
+    std::sort(ys.begin(), ys.end());
+
+    std::vector<double> dxs, dys;
+    for(size_t i=1;i<xs.size();i++) dxs.push_back(xs[i]-xs[i-1]);
+    for(size_t i=1;i<ys.size();i++) dys.push_back(ys[i]-ys[i-1]);
+
+    double mean_dx = std::accumulate(dxs.begin(), dxs.end(),0.0)/dxs.size();
+    double mean_dy = std::accumulate(dys.begin(), dys.end(),0.0)/dys.size();
+
+    double tol = 0.1;
+    for(auto dx: dxs) if(fabs(dx-mean_dx)/mean_dx>tol) return false;
+    for(auto dy: dys) if(fabs(dy-mean_dy)/mean_dy>tol) return false;
+
+    plane_reps_x = (int)((xs.back()-xs.front())/mean_dx);
+    plane_reps_y = (int)((ys.back()-ys.front())/mean_dy);
+    return true;
+}
+
+// ===================== MAIN =====================
+int main(){
+    srand(time(NULL));
+
+    int N_muons;
+    std::cout<<"Nombre de muons à générer: ";
+    std::cin >> N_muons;
+
+    std::vector<Vec3> detector_doms;
+    build_detector(detector_doms);
+
+    int total_doms = 0;
+    int total_photons = 0;
+    int generated_muons = 0;
+
+    while(generated_muons < N_muons){
+        Vec3 mu_pos, mu_dir;
+        generate_muon_on_cylinder(mu_pos, mu_dir);
+
+        if(!intersects_detector(mu_pos, mu_dir)) continue;
+
+        std::vector<Vec3> hit_doms;
+        double distance;
+        int photons_muon;
+
+        propagate_photons_cherenkov(mu_pos, mu_dir, detector_doms,
+                                    hit_doms, distance, photons_muon);
+
+        int plane_x=0, plane_y=0, axial_reps=0;
+        bool periodic_detected=false;
+        if(!hit_doms.empty()){
+            bool periodic_plan = check_planar_periodicity(hit_doms, mu_dir, plane_x, plane_y);
+            bool periodic_axial = check_axial_periodicity(hit_doms, mu_dir, axial_reps);
+            periodic_detected = (periodic_plan && periodic_axial);
+        }
+
+        total_doms += hit_doms.size();
+        total_photons += photons_muon;
+        generated_muons++;
+
+        std::cout<<"Muon "<<generated_muons
+                 << " | DOMs touchés: " << hit_doms.size()
+                 << " | Photons: " << photons_muon
+                 << " | Distance: " << distance << " m"
+                 << " | Périodicité: " << (periodic_detected ? "Oui" : "Non")
+                 << "\n";
+    }
+
+    std::cout<<"\n===== Résumé final =====\n";
+    std::cout<<"Total DOMs touchés: "<<total_doms<<"\n";
+    std::cout<<"Total photons détectés: "<<total_photons<<"\n";
+
+    return 0;
+}
