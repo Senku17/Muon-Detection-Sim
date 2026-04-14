@@ -21,10 +21,10 @@ Z_SPACING = 36.0
 # Consts for Photon generation & Time
 THETA_C = np.radians(42.0) # Cherenkov angle
 PHOTONS_PER_METER = 34500 
-R_DOM = 0.21  # DOM radius
+R_DOM = 0.21 # DOM radius
 
-C_VACUUM = 0.29979           # Speed of light in vacuum (meters per nanosecond)
-N_WATER = 1.35               # Refractive index of Seawater
+C_VACUUM = 0.29979 # Speed of light in vacuum (meters per nanosecond)
+N_WATER = 1.35 # Refractive index of Seawater
 V_WATER = C_VACUUM / N_WATER # Speed of light in water 
 
 
@@ -132,7 +132,7 @@ def get_rotation_matrix(w):
 def generate_photon_rays(mu_dir, n_photons):
     #Generates photon direction vectors in the Cherenkov cone and rotates them to global
     
-    # 1.  In the local frame (The cone)
+    # 1. In the local frame (The cone)
     phi = np.random.uniform(0, 2 * np.pi, n_photons)
     
     # Spherical to cartesian
@@ -158,7 +158,7 @@ def Physics_engine(mu_start, mu_dir, dom_positions, step_size=1.0, max_distance=
     
     if len(hit_doms) == 0:
         print(" -> Muon completely missed the detector. Skipping Phy engine!")
-        return
+        return None, None # <--- JUST ADD 'None, None' HERE!
 
     # ENGINE
     current_pos = np.copy(mu_start)
@@ -245,7 +245,7 @@ def Physics_engine(mu_start, mu_dir, dom_positions, step_size=1.0, max_distance=
     print(f"Total Photons detected : {total_hits}")
     print(f"Total Unique DOMs Hit: {unique_doms_hit} (out of {len(hit_doms)} filtred DOMs)")
     print(f"Total Time Taken to simulate this muon: {total_time:.2f} seconds")
-    
+
     if unique_doms_hit > 0:
         print("\nBreakdown of detections per DOM:")
         
@@ -254,17 +254,21 @@ def Physics_engine(mu_start, mu_dir, dom_positions, step_size=1.0, max_distance=
         
         for i, counts in enumerate(dom_hit_counts):
             if counts > 0:
-                # We pull the distance from the filter to see how close it was
                 dist = hit_distances[i]
-                
-                # Calculate the relative delay in nanoseconds
                 relative_time = dom_first_hit_times[i] - first_detector_hit
-                
                 print(f" -> DOM {i+1} (Distance: {dist:.1f}m) recorded {int(counts)} photons detected | Delay: {relative_time:.1f} ns")
+        
+        #extracting qnd returning the data
+        hit_mask = dom_hit_counts > 0
+        final_hit_coords = hit_doms[hit_mask]
+        final_hit_times = dom_first_hit_times[hit_mask] - first_detector_hit
+        
+        return final_hit_coords, final_hit_times
+        
+    # If there were 0 hits, return None so the main loop knows to ignore it
+    return None, None
 
-
-
-# EXECUTION
+# EXECUTION & DATA EXPORT
 
 N = int(input("Enter the number of simulated muons : "))
 
@@ -273,15 +277,45 @@ mu_position, mu_direction = generate_muons(N)
 du_positions = generate_du_positions()
 detector_3d = build_3d_detector(du_positions)
 
+# 1. Create lists to collect our successful data
+all_hit_data_4d = []
+valid_muon_starts = []
+valid_muon_dirs = []
+valid_event_ids = []
+
 #Loop through EVERY generated muon
 for i in range(N):
     print("\n" + "="*50)
     print(f" SIMULATING MUON #{i+1} OF {N}")
     print("="*50)
     
-    # Grab the specific muon for this loop iteration
     current_start = mu_position[i]
     current_dir = mu_direction[i]
     
-    # Run the optimized physics engine for this specific muon
-    Physics_engine(current_start, current_dir, detector_3d, step_size=1.0)
+    # 2. Run the engine and catch the returned data
+    hits, times = Physics_engine(current_start, current_dir, detector_3d, step_size=0.5)
+    
+    # 3. Only save the data if the muon actually triggered the detector!
+    if hits is not None:
+        # Merge X, Y, Z, and t into one 4D matrix
+        merged_4d_matrix = np.column_stack((hits, times))
+        
+        all_hit_data_4d.append(merged_4d_matrix)
+        valid_muon_starts.append(current_start)
+        valid_muon_dirs.append(current_dir)
+        valid_event_ids.append(i)
+
+# FILE SAVING
+print("\n" + "*"*50)
+print(f"Simulation Complete! {len(valid_event_ids)} out of {N} muons produced hits.")
+print("Saving dataset...")
+
+# np.savez packages all these separate arrays into one compressed file
+np.savez('km3net_events.npz', 
+         event_ids=valid_event_ids,
+         hit_data=np.array(all_hit_data_4d, dtype=object),
+         true_starts=valid_muon_starts,
+         true_dirs=valid_muon_dirs)
+
+print("SUCCESS: 4D Data [X, Y, Z, t] saved to 'km3net_events.npz'")
+print("*"*50)
